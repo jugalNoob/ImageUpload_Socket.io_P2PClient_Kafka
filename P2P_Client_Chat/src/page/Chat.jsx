@@ -6,6 +6,7 @@ function Chat() {
   const [connectedPeerId, setConnectedPeerId] = useState('');
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
+  const [file, setFile] = useState(null); // State to hold the selected file
   const peerRef = useRef(null);
 
   useEffect(() => {
@@ -23,7 +24,16 @@ function Chat() {
     // Handle incoming connections
     peer.on('connection', conn => {
       conn.on('data', data => {
-        setMessages(prevMessages => [...prevMessages, data]);
+        if (data.type === 'file') {
+          // If the data is a file, render it as an image or link
+          setMessages(prevMessages => [
+            ...prevMessages,
+            { file: data.file, fileType: data.fileType, fileName: data.fileName }
+          ]);
+        } else {
+          // Otherwise, it's a text message
+          setMessages(prevMessages => [...prevMessages, { text: data }]);
+        }
       });
 
       conn.on('open', () => {
@@ -42,19 +52,49 @@ function Chat() {
     const conn = peer.connect(connectedPeerId);
 
     conn.on('open', () => {
-      conn.send(message);
-      setMessages(prevMessages => [...prevMessages, `You: ${message}`]);
-      setMessage('');
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          conn.send({
+            type: 'file',
+            file: reader.result, // Send base64 string
+            fileName: file.name,
+            fileType: file.type
+          });
+          setMessages(prevMessages => [
+            ...prevMessages,
+            { text: `You sent a file: ${file.name}`, file: reader.result, fileName: file.name, fileType: file.type }
+          ]);
+          setFile(null); // Clear the file input after sending
+        };
+        reader.readAsDataURL(file); // Convert file to base64
+      } else {
+        conn.send(message);
+        setMessages(prevMessages => [...prevMessages, { text: `You: ${message}` }]);
+        setMessage('');
+      }
     });
 
     conn.on('data', data => {
-      setMessages(prevMessages => [...prevMessages, data]);
+      if (data.type === 'file') {
+        // Receive file
+        setMessages(prevMessages => [
+          ...prevMessages,
+          { file: data.file, fileName: data.fileName, fileType: data.fileType }
+        ]);
+      } else {
+        setMessages(prevMessages => [...prevMessages, { text: data }]);
+      }
     });
+  };
+
+  const handleFileChange = e => {
+    setFile(e.target.files[0]);
   };
 
   return (
     <div>
-      <h1>P2P Messaging</h1>
+      <h1>P2P Messaging with File Upload</h1>
       <div>
         <h2>Your Peer ID: {peerId}</h2>
         <input
@@ -69,7 +109,19 @@ function Chat() {
         <h2>Messages</h2>
         <ul>
           {messages.map((msg, index) => (
-            <li key={index}>{msg}</li>
+            <li key={index}>
+              {msg.file ? (
+                msg.fileType && msg.fileType.startsWith('image/') ? (
+                  <img src={msg.file} alt="Received file" style={{ maxWidth: '400px' ,height:"100px" }} />
+                ) : (
+                  <a href={msg.file} download={msg.fileName}>
+                    Download   dowmalod{msg.fileName}
+                  </a>
+                )
+              ) : (
+                msg.text
+              )}
+            </li>
           ))}
         </ul>
       </div>
@@ -77,13 +129,130 @@ function Chat() {
         type="text"
         value={message}
         onChange={e => setMessage(e.target.value)}
+        placeholder="Type your message"
       />
+      <input type="file" onChange={handleFileChange} />
       <button onClick={connectToPeer}>Send</button>
     </div>
   );
 }
 
 export default Chat;
+
+
+
+
+{/* <ul>
+  {messages.map((msg, index) => (
+    <li key={index}>
+      {msg.file ? (
+        msg.fileType && msg.fileType.startsWith('image/') ? (
+          <img src={msg.file} alt="Received file" style={{ maxWidth: '300px' }} />
+        ) : (
+          <a href={msg.file} download={msg.fileName}>
+            Download {msg.fileName}
+          </a>
+        )
+      ) : (
+        msg
+      )}
+    </li>
+  ))}
+</ul>
+
+ */}
+
+
+// import Peer from 'peerjs';
+// import React, { useEffect, useRef, useState } from 'react';
+
+// function Chat() {
+//   const [peerId, setPeerId] = useState('');
+//   const [connectedPeerId, setConnectedPeerId] = useState('');
+//   const [messages, setMessages] = useState([]);
+//   const [message, setMessage] = useState('');
+//   const peerRef = useRef(null);
+
+//   useEffect(() => {
+//     // Create a new Peer instance
+//     peerRef.current = new Peer(); // Peer generates a unique ID for you
+
+//     const peer = peerRef.current;
+
+//     // Get your own peer ID
+//     peer.on('open', id => {
+//       setPeerId(id);
+//       console.log('My peer ID:', id);
+//     });
+
+//     // Handle incoming connections
+//     peer.on('connection', conn => {
+//       conn.on('data', data => {
+//         setMessages(prevMessages => [...prevMessages, data]);
+//       });
+
+//       conn.on('open', () => {
+//         conn.send('Hello from ' + peerId);
+//       });
+//     });
+
+//     // Cleanup on component unmount
+//     return () => {
+//       peer.destroy();
+//     };
+//   }, []);
+
+//   const connectToPeer = () => {
+//     const peer = peerRef.current;
+//     const conn = peer.connect(connectedPeerId);
+
+//     conn.on('open', () => {
+//       conn.send(message);
+//       setMessages(prevMessages => [...prevMessages, `You: ${message}`]);
+//       setMessage('');
+//     });
+
+//     conn.on('data', data => {
+//       setMessages(prevMessages => [...prevMessages, data]);
+//     });
+//   };
+
+//   return (
+//     <div>
+//       <h1>P2P Messaging</h1>
+//       <div>
+//         <h2>Your Peer ID: {peerId}</h2>
+//         <input
+//           type="text"
+//           placeholder="Peer ID to connect"
+//           value={connectedPeerId}
+//           onChange={e => setConnectedPeerId(e.target.value)}
+//         />
+
+
+
+//         <button onClick={connectToPeer}>Connect</button>
+//       </div>
+//       <div>
+//         <h2>Messages</h2>
+//         <ul>
+//           {messages.map((msg, index) => (
+//             <li key={index}>{msg}</li>
+//           ))}
+//         </ul>
+//       </div>
+//       <input
+//         type="text"
+//         value={message}
+//         onChange={e => setMessage(e.target.value)}
+//       />
+//       {/* <input type="file" name="" id="" /> add image and file upload options */}
+//       <button onClick={connectToPeer}>Send</button>
+//     </div>
+//   );
+// }
+
+// export default Chat;
 
 
 // // import React, { useEffect, useState } from 'react';
